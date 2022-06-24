@@ -23,11 +23,8 @@ public class ReycoCacheInterceptor extends ReycoCacheAspectSupport implements Me
 		CacheAttributeSource tas = getCacheAttributeSource();
 		CacheAttribute cacheAttr = tas.getCacheAttribute(invocation.getMethod(), invocation.getThis().getClass());
 		try {
-			if (cacheAttr.getAttribute(ReycoCacheable.class.getName()) != null) {
-				return processReycoCacheable(invocation);
-			}
-			if (cacheAttr.getAttribute(ReycoCacheEvict.class.getName()) != null) {
-				return processReycoCacheEvict(invocation);
+			if (cacheAttr.getAttribute(ReycoCacheable.class.getName()) != null || cacheAttr.getAttribute(ReycoCacheEvict.class.getName()) != null) {
+				return invokeInvocation(invocation);
 			}
 			return invocation.proceed();
 		} catch (Throwable e) {
@@ -35,12 +32,11 @@ public class ReycoCacheInterceptor extends ReycoCacheAspectSupport implements Me
 			return invocation.proceed();
 		}
 	}
-	
 	public void setCacheAttributeSource(CacheAttributeSource cacheAttributeSource) {
 		this.cacheAttributeSource = cacheAttributeSource;
 	}
-
 	public CacheAttributeSource getCacheAttributeSource() {
 		return cacheAttributeSource;
 	}
+	
 }

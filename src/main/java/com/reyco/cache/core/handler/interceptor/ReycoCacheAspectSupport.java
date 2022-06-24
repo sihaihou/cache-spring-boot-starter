@@ -1,12 +1,18 @@
 package com.reyco.cache.core.handler.interceptor;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 import org.aopalliance.intercept.MethodInvocation;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.BeanFactoryAware;
+import org.springframework.cache.interceptor.KeyGenerator;
 import org.springframework.core.LocalVariableTableParameterNameDiscoverer;
 import org.springframework.util.StringUtils;
 
 import com.reyco.cache.core.cache.CacheUtils;
+import com.reyco.cache.core.handler.SimpleKeyGenerator;
 import com.reyco.cache.core.handler.annotation.ReycoCacheEvict;
 import com.reyco.cache.core.handler.annotation.ReycoCacheable;
 
@@ -16,207 +22,151 @@ import com.reyco.cache.core.handler.annotation.ReycoCacheable;
  * @date    2022.06.14
  * @version v1.0.1
  */
-public class ReycoCacheAspectSupport {
-	/**
-	 * 
-	 * @author  reyco
-	 * @date    2022年6月15日
-	 * @version v1.0.1 
-	 * @param invocation
-	 * @return
-	 * @throws Throwable
-	 */
-	protected Object processReycoCacheEvict(MethodInvocation invocation) throws Throwable {
-		Class<? extends Object> targetClass = invocation.getThis().getClass();
-		Method method = invocation.getMethod();
-		Object[] parameterValues = invocation.getArguments();
-		LocalVariableTableParameterNameDiscoverer localVariableTableParameterNameDiscoverer = new LocalVariableTableParameterNameDiscoverer();
-		String[] parameterNames = localVariableTableParameterNameDiscoverer.getParameterNames(method);
-		ReycoCacheEvict reycoCacheEvict = method.getAnnotation(ReycoCacheEvict.class);
-		String cacheName = getCacheName(reycoCacheEvict);
-		KeyGenerator keyGenerator = getKeyGenerator(reycoCacheEvict, targetClass, method, parameterNames, parameterValues);
-		String key = getKey(cacheName, keyGenerator);
-		CacheUtils.remove(key);
-		return invocation.proceed();
+public class ReycoCacheAspectSupport implements BeanFactoryAware{
+	private BeanFactory beanFactory;
+	@Override
+	public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+		this.beanFactory=beanFactory;
 	}
 	/**
-	 * 
+	 * 生成key
 	 * @author  reyco
-	 * @date    2022年6月15日
+	 * @date    2022年6月24日
 	 * @version v1.0.1 
-	 * @param invocation
+	 * @param target
+	 * @param method
+	 * @param params
 	 * @return
-	 * @throws Throwable
 	 */
-	protected Object processReycoCacheable(MethodInvocation invocation) throws Throwable {
-		Class<? extends Object> targetClass = invocation.getThis().getClass();
-		Method method = invocation.getMethod();
-		Object[] parameterValues = invocation.getArguments();
-		LocalVariableTableParameterNameDiscoverer localVariableTableParameterNameDiscoverer = new LocalVariableTableParameterNameDiscoverer();
-		String[] parameterNames = localVariableTableParameterNameDiscoverer.getParameterNames(method);
+	protected String getKey(Object target, Method method,Object... params) {
+		KeyGenerator keyGenerator = null;
+		String keyGeneratorStr;
 		ReycoCacheable reycoCacheable = method.getAnnotation(ReycoCacheable.class);
-		String cacheName = getCacheName(reycoCacheable);
-		KeyGenerator keyGenerator = getKeyGenerator(reycoCacheable, targetClass, method, parameterNames,parameterValues);
-		// 3.1有注解
-		String key = getKey(cacheName, keyGenerator);
-		// 通过key获取缓存value
-		Object object = CacheUtils.get(key);
-		if (null == object) {
+		if(reycoCacheable==null) {
+			ReycoCacheEvict reycoCacheEvict = method.getAnnotation(ReycoCacheEvict.class);
+			if(reycoCacheEvict!=null) {
+				if(!StringUtils.isEmpty(keyGeneratorStr=reycoCacheEvict.keyGenerator())) {
+					keyGenerator = getKeyGenerator(keyGeneratorStr);
+				}
+			}
+		}else {
+			if(!StringUtils.isEmpty(keyGeneratorStr=reycoCacheable.keyGenerator())) {
+				keyGenerator = getKeyGenerator(keyGeneratorStr);
+			}
+			if(keyGenerator==null) {
+				ReycoCacheEvict reycoCacheEvict = method.getAnnotation(ReycoCacheEvict.class);
+				if(reycoCacheEvict!=null) {
+					if(!StringUtils.isEmpty(keyGeneratorStr=reycoCacheEvict.keyGenerator())) {
+						keyGenerator = getKeyGenerator(keyGeneratorStr);
+					}
+				}
+			}
+		}
+		if(keyGenerator==null) {
+			SimpleKeyGenerator simpleKeyGenerator = new SimpleKeyGenerator();
+			return simpleKeyGenerator.generate(target, method, params).toString();
+		}
+		return keyGenerator.generate(target, method, params).toString();
+	}
+	
+	private KeyGenerator getKeyGenerator(String KeyGeneratorName){
+		return beanFactory.getBean(KeyGeneratorName,KeyGenerator.class);
+	}
+	public Object invokeInvocation(MethodInvocation invocation) {
+		Method targetMethod = invocation.getMethod();
+		Object[] parameterValues = invocation.getArguments();
+		LocalVariableTableParameterNameDiscoverer localVariableTableParameterNameDiscoverer = new LocalVariableTableParameterNameDiscoverer();
+		String[] parameterNames = localVariableTableParameterNameDiscoverer.getParameterNames(targetMethod);
+		Class<?>[] parameterTypes = targetMethod.getParameterTypes();
+		ReycoCacheable reycoCacheable = targetMethod.getAnnotation(ReycoCacheable.class);
+		// 2.1有注解
+		String key = reycoCacheable.key();
+		if(StringUtils.isEmpty(key)) {
+			key = getKey(invocation.getThis(), targetMethod, parameterValues);
+			return putOrGetCache(invocation, key, reycoCacheable.expireTime());
+		}else {
+			// 3.2key是否包含#字符
+			if (!key.contains("#")) {
+				throw new RuntimeException(reycoCacheable.keyGenerator()+",必须包含'#'特色符.");
+			}
+			// 3.3 获取KeyGenerator的名称
+			key = key.substring(1);
+			if(!key.contains(".")) {
+				for (int i = 0; i < parameterNames.length; i++) {
+					if (key.equals(parameterNames[i])) {
+						key = key+"::"+parameterValues[i].toString();
+						return putOrGetCache(invocation, key, reycoCacheable.expireTime());
+					}
+				}
+				throw new RuntimeException(reycoCacheable.keyGenerator()+",出错");
+			}
+			String[] keyArray = key.split("\\.");
+			// 3.4 获取KeyGenerator值
+			for (int i = 0; i < parameterNames.length; i++) {
+				if ((key=keyArray[0]).equals(parameterNames[i])) {
+					// 如果注解的keyGenerator和参数的名称一直，取对应参数的值作为keyGenerator
+					Field[] fields = parameterTypes[i].getDeclaredFields();
+					for (int j=0;j<fields.length;j++) {
+						Field field = fields[j];
+						field.setAccessible(true);
+						String fieldName = field.getName();
+						if((key=keyArray[1]).equals(fieldName)) {
+							try {
+								Object fieldValue = fields[j].get(parameterValues[j]);
+								key = keyArray[0]+"."+keyArray[1];
+								return invoke(invocation, keyArray, 2, key,fieldValue,reycoCacheable.expireTime());
+							} catch (IllegalArgumentException | IllegalAccessException e) {
+								e.printStackTrace();
+							}
+						}
+					}
+				}
+			}
+			throw new RuntimeException(reycoCacheable.keyGenerator()+",出错");
+		}
+	}
+	
+	protected Object invoke(MethodInvocation invocation,String[] keyArray,int current,String key,Object value,Long expireTime){
+		if(keyArray.length<=current) {
+			key = key+"::"+value.toString();
+			return putOrGetCache(invocation,key,expireTime);
+		}
+		String currentKey = keyArray[current];
+		if(StringUtils.isEmpty(currentKey)) {
+			throw new RuntimeException("Key configuration error");
+		}
+		Field[] fields = value.getClass().getDeclaredFields();
+		for (int i=0;i<fields.length;i++) {
+			Field field = fields[i];
+			field.setAccessible(true);
+			String fieldName = field.getName();
+			if(currentKey.equals(fieldName)) {
+				try {
+					return invoke(invocation,keyArray,current+1,key+"."+fieldName,field.get(value),expireTime);
+				} catch (IllegalArgumentException | IllegalAccessException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		throw new RuntimeException("Key configuration error");
+	}
+	
+	protected Object putOrGetCache(MethodInvocation invocation,String key,long expireTime) {
+		key = getKey(invocation.getThis(), invocation.getMethod(),key);
+		Object value;
+		if ((value=CacheUtils.get(key))==null) {
 			// 缓存中不存在当前缓存,执行目标方法
-			object = invocation.proceed();
-			long expireTime = reycoCacheable.expireTime();
+			try {
+				value = invocation.proceed();
+			} catch (Throwable e) {
+				e.printStackTrace();
+			}
 			if (expireTime < 1) {
-				CacheUtils.put(key, object);
+				CacheUtils.put(key, value);
 			} else {
-				CacheUtils.put(key, object, expireTime);
+				CacheUtils.put(key, value, expireTime);
 			}
 		}
-		return object;
+		return value;
 	}
-	/**
-	 * 获取key
-	 * @param cacheName	                       缓存名称
-	 * @param keyGeneratorObj   keyGeneratorObj对象
-	 * @return
-	 */
-	protected String getKey(String cacheName,KeyGenerator keyGeneratorObj) {
-		String key = "";
-		// 缓存
-		String keyGenerator = keyGeneratorObj.getKeyGenerator();
-		key = cacheName + keyGenerator;
-		return key;
-	}
-	/**
-	 * 获取缓存名称
-	 * @param reycoCacheable
-	 * @return
-	 */
-	protected String getCacheName(ReycoCacheable reycoCacheable) {
-		// 缓存名称
-		String cacheName = "";
-		String name = reycoCacheable.name();
-		if(!StringUtils.isEmpty(name)) {
-			cacheName = name+"::";
-		}
-		return cacheName;
-	}
-	/**
-	 * 获取缓存名称
-	 * @param reycoCacheEvict
-	 * @return
-	 */
-	protected String getCacheName(ReycoCacheEvict reycoCacheEvict) {
-		// 缓存名称
-		String cacheName = "";
-		String name = reycoCacheEvict.name();
-		if(!StringUtils.isEmpty(name)) {
-			cacheName = name+"::";
-		}
-		return cacheName;
-	}
-	/**
-	 * 获取KeyGenerator
-	 * @param reycoCacheable
-	 * @param clazz
-	 * @param method
-	 * @param paramNames
-	 * @param paramValues
-	 * @return
-	 */
-	protected KeyGenerator getKeyGenerator(ReycoCacheable reycoCacheable,Class<?> clazz,Method method, String[] paramNames, Object[] paramValues) {
-		// KeyGenerator
-		KeyGenerator keyGeneratorObj = null;
-		// 2.1有注解
-		String keyGenerator = reycoCacheable.keyGenerator();
-		if(StringUtils.isEmpty(keyGenerator)) {
-			keyGenerator = createKeyGenerator(clazz,method,paramValues);
-		}else {
-			// 3.2key是否包含#字符
-			if (keyGenerator.contains("#")) {
-				// 3.3 获取KeyGenerator的名称
-				String keyGeneratorName = keyGenerator.substring(1);
-				// 3.4 获取KeyGenerator值
-				for (Object paramValue : paramValues) {
-					for (int j = 0; j < paramNames.length; j++) {
-						if (keyGeneratorName.equals(paramNames[j])) {
-							// 如果注解的keyGenerator和参数的名称一直，取对应参数的值作为keyGenerator
-							keyGenerator = paramValues[j].toString();
-						}
-					}
-				}
-			}
-		}
-		keyGeneratorObj = new KeyGenerator();
-		keyGeneratorObj.setKeyGenerator(keyGenerator);
-		return keyGeneratorObj;
-	}
-	/**
-	 * 获取KeyGenerator
-	 * @param reycoCacheEvict
-	 * @param clazz
-	 * @param method
-	 * @param paramNames
-	 * @param paramValues
-	 * @return
-	 */
-	protected KeyGenerator getKeyGenerator(ReycoCacheEvict reycoCacheEvict,Class<?> clazz,Method method, String[] paramNames, Object[] paramValues) {
-		// KeyGenerator
-		KeyGenerator keyGeneratorObj = null;
-		// 2.1有注解
-		String keyGenerator = reycoCacheEvict.keyGenerator();
-		if(StringUtils.isEmpty(keyGenerator)) {
-			keyGenerator = createKeyGenerator(clazz,method,paramValues);
-		}else {
-			// 3.2key是否包含#字符
-			if (keyGenerator.contains("#")) {
-				// 3.3 获取KeyGenerator的名称
-				String keyGeneratorName = keyGenerator.substring(1);
-				// 3.4 获取KeyGenerator值
-				for (Object paramValue : paramValues) {
-					for (int j = 0; j < paramNames.length; j++) {
-						if (keyGeneratorName.equals(paramNames[j])) {
-							// 如果注解的keyGenerator和参数的名称一直，取对应参数的值作为keyGenerator
-							keyGenerator = paramValues[j].toString();
-						}
-					}
-				}
-			}
-		}
-		keyGeneratorObj = new KeyGenerator();
-		keyGeneratorObj.setKeyGenerator(keyGenerator);
-		return keyGeneratorObj;
-	}
-	/**
-	 * key的默认生成器
-	 * @param target	目标对象
-	 * @param method	目标方法
-	 * @param params	目标方法参数
-	 * @return
-	 */
-	protected String createKeyGenerator(Object target, Method method, Object... params) {
-		// 缓存的key
-		StringBuilder sb = new StringBuilder();
-		sb.append(target.getClass());
-		sb.append(method.getName());
-		for (Object obj : params) {
-			sb.append(obj.toString());
-		}
-		return sb.toString();
-	}	
-	/**
-	 * key生成器
-	 * @author  reyco
-	 * @date    2022.06.13
-	 * @version v1.0.1
-	 */
-	protected static class KeyGenerator {
-		String key;
-
-		public String getKeyGenerator() {
-			return key;
-		}
-		public void setKeyGenerator(String key) {
-			this.key = key;
-		}
-	} 
 }

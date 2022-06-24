@@ -17,12 +17,28 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ReycoCacheable {
 	/**
-	 * 缓存名称
+	 * cacheName
+	 * @author  reyco
+	 * @date    2022年6月24日
+	 * @version v1.0.1 
 	 * @return
 	 */
-	String name() default "";
+	String value() default "";
 	/**
-	 * 缓存的keyGenerator
+	 * cacheName
+	 * @return
+	 */
+	String cacheName() default "";
+	/**
+	 * 获取的key
+	 * @author  reyco
+	 * @date    2022年6月24日
+	 * @version v1.0.1 
+	 * @return
+	 */
+	String key()  default "";
+	/**
+	 * 缓存的key生成器
 	 * @return
 	 */
 	String keyGenerator() default "";
