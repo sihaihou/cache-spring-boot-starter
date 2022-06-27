@@ -1,4 +1,4 @@
-package com.reyco.cache.core.cache;
+package com.reyco.cache.core.cache.strategy;
 
 import java.util.Date;
 
@@ -18,21 +18,19 @@ import org.quartz.TriggerBuilder;
 import org.quartz.impl.StdSchedulerFactory;
 import org.springframework.stereotype.Component;
 
+import com.reyco.cache.core.cache.ConcurrentHashMapCache;
+
 /**
  * 	定时任务删除过期的缓存对象
  * @author housihai
  *
  */
 @Component
-public class TaskRemoveStrategy implements Job,DeleteStrategy{
-	@Override
-	public void deleteCache() {
-		ConcurrentHashMapCache instance = ConcurrentHashMapCache.getInstance();
-		instance.removeStrategy();
-	}
+public class SimplScheduledDeleteStrategy implements ScheduledDeleteStrategy,Job{
+	
 	@Override
 	public void execute(JobExecutionContext context) throws JobExecutionException {
-		deleteCache();
+		scheduledDeleteCache();
 	}
 	@PostConstruct
 	public void task() {
@@ -40,7 +38,7 @@ public class TaskRemoveStrategy implements Job,DeleteStrategy{
 			Date startTime = new Date();
 			startTime.setTime(startTime.getTime()+1000*30);
 			// 创建一个JobDetail
-			JobDetail taskJobDetail = JobBuilder.newJob(TaskRemoveStrategy.class)
+			JobDetail taskJobDetail = JobBuilder.newJob(SimplScheduledDeleteStrategy.class)
 					.withIdentity("TaskDetailJob","TaskDetailGroup")
 					.build();
 			// Cron表达式：  秒 分 时 日 月 周 年
@@ -59,5 +57,16 @@ public class TaskRemoveStrategy implements Job,DeleteStrategy{
 		} catch (SchedulerException e) {
 			e.printStackTrace();
 		}
+	}
+
+	@Override
+	public void deleteCache() {
+		scheduledDeleteCache();
+	}
+
+	@Override
+	public void scheduledDeleteCache() {
+		ConcurrentHashMapCache instance = ConcurrentHashMapCache.getInstance();
+		instance.removeStrategy();
 	}
 }

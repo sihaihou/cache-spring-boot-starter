@@ -2,6 +2,7 @@ package com.reyco.cache.core.cache;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -173,7 +174,10 @@ public class ConcurrentHashMapCache implements Cache{
 		logger.debug("获取缓存，key="+key+",value="+object);
 		return object;
 	}
-	
+	@Override
+	public Map<String,Object> getAll() {
+		return store;
+	}
 	/**
 	 * 获取元素数量
 	 * @param key
@@ -249,5 +253,4 @@ public class ConcurrentHashMapCache implements Cache{
 		}
 		return false;
 	}
-	
 }

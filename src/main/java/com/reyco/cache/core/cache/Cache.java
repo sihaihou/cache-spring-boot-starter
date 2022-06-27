@@ -1,5 +1,8 @@
 package com.reyco.cache.core.cache;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * 
  * 缓存顶级接口
@@ -44,6 +47,14 @@ public interface Cache {
 	 * @return
 	 */
 	public Object get(String key);
+	/**
+	 * 获取所有缓存对象
+	 * @author  reyco
+	 * @date    2022年6月27日
+	 * @version v1.0.1 
+	 * @return
+	 */
+	public Map<String,Object> getAll();
 	/**
 	 * 判断key是否存在
 	 * @param key
