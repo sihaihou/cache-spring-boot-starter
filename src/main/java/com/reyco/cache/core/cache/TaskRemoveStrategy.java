@@ -24,14 +24,16 @@ import org.springframework.stereotype.Component;
  *
  */
 @Component
-public class TaskRemoveStrategy implements Job {
-	
+public class TaskRemoveStrategy implements Job,DeleteStrategy{
 	@Override
-	public void execute(JobExecutionContext context) throws JobExecutionException {
+	public void deleteCache() {
 		ConcurrentHashMapCache instance = ConcurrentHashMapCache.getInstance();
 		instance.removeStrategy();
 	}
-	
+	@Override
+	public void execute(JobExecutionContext context) throws JobExecutionException {
+		deleteCache();
+	}
 	@PostConstruct
 	public void task() {
 		try {
@@ -58,6 +60,4 @@ public class TaskRemoveStrategy implements Job {
 			e.printStackTrace();
 		}
 	}
-	
-	
 }

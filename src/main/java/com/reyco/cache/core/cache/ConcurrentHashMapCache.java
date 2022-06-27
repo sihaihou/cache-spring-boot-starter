@@ -1,6 +1,7 @@
 package com.reyco.cache.core.cache;
 
 import java.util.Date;
+import java.util.List;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -15,7 +16,7 @@ import org.springframework.util.StringUtils;
  * @author reyco
  *
  */
-public class ConcurrentHashMapCache implements Cache {
+public class ConcurrentHashMapCache implements Cache{
 	
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 	/**
@@ -26,6 +27,7 @@ public class ConcurrentHashMapCache implements Cache {
 	 * 缓存的信息: 过去时间。。。
 	 */
 	private final static ConcurrentMap<String, ExpireInfo> storeObj = new ConcurrentHashMap<>();
+	
 	/**
 	 * 私有构造器
 	 */
@@ -247,4 +249,5 @@ public class ConcurrentHashMapCache implements Cache {
 		}
 		return false;
 	}
+	
 }
