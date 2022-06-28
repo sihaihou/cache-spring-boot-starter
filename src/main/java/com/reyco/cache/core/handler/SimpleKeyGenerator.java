@@ -39,6 +39,6 @@ public class SimpleKeyGenerator implements KeyGenerator{
 		if(StringUtils.isEmpty(cacheName)) {
 			return target.getClass().getName()+'.'+method.getName()+"()."+params[0];
 		}
-		return cacheName+"@"+target.getClass().getName()+'.'+method.getName()+"()."+params[0];
+		return cacheName+"@"+target.getClass().getName()+'.'+method.getName()+"().Parameter."+params[0];
 	}
 }
